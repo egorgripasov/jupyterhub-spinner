@@ -1,0 +1,41 @@
+hub:
+  cookieSecret: "%s"
+proxy:
+  secretToken: "%s"
+
+singleuser:
+  image:
+    name: %s
+    tag: %s
+  cpu:
+    limit: %d
+    guarantee: %d
+  memory:
+    limit: %s
+    guarantee: %s
+  initContainers:
+    - name: init-iptables
+      image: gcr.io/jupyterhub-54321/alpine-plus-iptables:v1
+      command: ["sh", "-c", "iptables -A OUTPUT -d 10.0.0.0/8 -m state --state NEW -j ACCEPT  && iptables -A OUTPUT -d 127.0.0.0/8 -m state --state NEW -j ACCEPT  && iptables -A OUTPUT -m state --state NEW -j DROP" ]
+      securityContext:
+        runAsUser: 0
+        capabilities:
+          add:
+          - NET_ADMIN
+          - NET_RAW
+
+hub:
+  extraConfig: |
+    c.JupyterHub.authenticator_class = 'jwtauthenticator.jwtauthenticator.JSONWebTokenAuthenticator'
+    c.JSONWebTokenAuthenticator.signing_certificate = '/pubkeys/jwt-pubkey'  # The certificate used to sign the incoming JSONWebToken, must be in PEM Format
+    c.JSONWebTokenAuthenticator.username_claim_field = 'identifier'  # The claim field contianing the username/sAMAccountNAme/userPrincipalName
+    c.JSONWebTokenAuthenticator.login_redirect = 'https://www.safaribooksonline.com/training/materials/external/?url='
+  image:
+    name: gcr.io/jupyterhub-54321/k8s-hub
+    tag: v0.2
+
+cull:
+  enabled: %s
+  users: false
+  timeout: %d
+  every: 600
