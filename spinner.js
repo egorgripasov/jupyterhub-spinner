@@ -8,6 +8,8 @@ const { execSync, exec } = require('child_process');
 class Spinner {
     constructor() {
         this.admin_user = require('/AUTH').client_email;
+        this.project_id = require('/AUTH').project_id;
+
         this.status = 'STARTING';
         this.stdout = '';
         this.stderr = '';
@@ -63,6 +65,7 @@ class Spinner {
 
 
         let build_steps = [
+            { code: `gcloud auth activate-service-account ${this.admin_user} --key-file /AUTH.json --project ${this.project_id}`, status: 'GOOGLE_AUTH' },
             { code: `gcloud container clusters create ${cluster_name} --num-nodes=${cluster_size} --machine-type=${machine_type} --zone=us-central1-b --cluster-version=1.8.4-gke.1`, status: 'CLUSTER_CREATING' }, // TODO - zone?
             { code: `kubectl create clusterrolebinding cluster-admin-binding --clusterrole=cluster-admin --user=${this.admin_user}`, status: 'CLUSTER_ROLE_BINDING' },
             { code: `kubectl --namespace kube-system create sa tiller`, status: 'HELM_INIT_1' },
