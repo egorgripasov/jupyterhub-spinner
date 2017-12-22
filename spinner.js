@@ -68,8 +68,8 @@ class Spinner {
             { code: `gcloud auth activate-service-account ${this.admin_user} --key-file /AUTH.json --project ${this.project_id}`, status: 'GOOGLE_AUTH' },
             { code: `gcloud container clusters create ${cluster_name} --num-nodes=${cluster_size} --machine-type=${machine_type} --zone=us-central1-b --cluster-version=1.8.4-gke.1`, status: 'CLUSTER_CREATING' }, // TODO - zone?
             { code: `kubectl create -f /grafana/grafana_install/  > /dev/null 2>&1`, status: 'INSTALL_GRAFANA', skip: !installGrafana, presleep: 10000 },
-            { code: `echo $(kubectl get services --all-namespaces | grep grafana | awk '{print $5 }')`, status: 'FETCHING_GRAFANA_IP', skip: !installGrafana, field: 'grafanaIP', presleep: 10000, regex: /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/ },
-            { code: `curl -s -o /dev/null --connect-timeout 180 jupyter:T0mthumb@${this.grafanaIP}/api/dashboards/db -d @/grafana/dashboard.json  --header "Content-Type: application/json"`, status: 'SETUP_GRAFANA', skip: !installGrafana, presleep: 10000 },
+            { code: `echo $(kubectl get services --all-namespaces | grep grafana | awk '{print $5 }')`, status: 'FETCHING_GRAFANA_IP', skip: !installGrafana, field: 'grafanaIP', presleep: 30000, regex: /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/ },
+            { code: `curl -s -o /dev/null --connect-timeout 180 jupyter:T0mthumb@${this.grafanaIP}/api/dashboards/db -d @/grafana/dashboard.json  --header "Content-Type: application/json"`, status: 'SETUP_GRAFANA', skip: !installGrafana, presleep: 30000 },
             { code: `kubectl create clusterrolebinding cluster-admin-binding --clusterrole=cluster-admin --user=${this.admin_user}`, status: 'CLUSTER_ROLE_BINDING' },
             { code: `kubectl --namespace kube-system create sa tiller`, status: 'HELM_INIT_1' },
             { code: `kubectl create clusterrolebinding tiller --clusterrole cluster-admin --serviceaccount=kube-system:tiller`, status: 'HELM_INIT_2' },
@@ -87,7 +87,7 @@ class Spinner {
             let timeOut = step.presleep || 5000;
             if (!step.skip) {
                 setTimeout(()=> {
-                    let count = 0, count_num = (step.wait_for_response) ? 400 : 1;
+                    let count = 0, count_num = (step.wait_for_response) ? 1000 : 1;
                     async.whilst(
                         () => { return !((step.field && this[step.field] !== null) || count >= count_num); },
                         (cb1) => { 
