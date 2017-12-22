@@ -67,6 +67,9 @@ class Spinner {
         let build_steps = [
             { code: `gcloud auth activate-service-account ${this.admin_user} --key-file /AUTH.json --project ${this.project_id}`, status: 'GOOGLE_AUTH' },
             { code: `gcloud container clusters create ${cluster_name} --num-nodes=${cluster_size} --machine-type=${machine_type} --zone=us-central1-b --cluster-version=1.8.4-gke.1`, status: 'CLUSTER_CREATING' }, // TODO - zone?
+            { code: `kubectl create -f /grafana/grafana_install/  > /dev/null 2>&1`, status: 'INSTALL_GRAFANA', skip: !installGrafana, presleep: 10000 },
+            { code: `echo $(kubectl get services --all-namespaces | grep grafana | awk '{print $5 }')`, status: 'FETCHING_GRAFANA_IP', skip: !installGrafana, field: 'grafanaIP', presleep: 10000, regex: /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/ },
+            { code: `curl -s -o /dev/null --connect-timeout 180 jupyter:T0mthumb@${this.grafanaIP}/api/dashboards/db -d @/grafana/dashboard.json  --header "Content-Type: application/json"`, status: 'SETUP_GRAFANA', skip: !installGrafana, presleep: 10000 },
             { code: `kubectl create clusterrolebinding cluster-admin-binding --clusterrole=cluster-admin --user=${this.admin_user}`, status: 'CLUSTER_ROLE_BINDING' },
             { code: `kubectl --namespace kube-system create sa tiller`, status: 'HELM_INIT_1' },
             { code: `kubectl create clusterrolebinding tiller --clusterrole cluster-admin --serviceaccount=kube-system:tiller`, status: 'HELM_INIT_2' },
@@ -75,45 +78,49 @@ class Spinner {
             { code: `helm repo add jupyterhub https://jupyterhub.github.io/helm-chart/`, status: 'HELM_REPO_UPD_1' },
             { code: `helm repo update`, status: 'HELM_REPO_UPD_2' },
             { code: `helm install jupyterhub/jupyterhub --version=${chart_version} --name=${namespace} --namespace=${namespace} -f config.yaml`, status: 'JUPYTERHUB_INSTALLATION', presleep: 15000 },
-            { code: `echo $(kubectl get services --all-namespaces | grep proxy-public | awk '{print $5 }')`, status: 'FETCHING_HUB_IP', wait_for_response: true, field: 'proxyIP', regex: /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/ }
+            { code: `echo $(kubectl get services --all-namespaces | grep proxy-public | awk '{print $5 }')`, status: 'FETCHING_HUB_IP', wait_for_response: true, field: 'proxyIP', presleep: 10000, regex: /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/ }
         ];
 
         async.eachSeries(build_steps, (step, cb) => {
             this.status = step.status;
             console.log(`Executing command: ${step.code}`);
             let timeOut = step.presleep || 5000;
-            setTimeout(()=> {
-                let count = 0, count_num = (step.wait_for_response) ? 400 : 1;
-                async.whilst(
-                    () => { return !((step.field && this[step.field] !== null) || count >= count_num); },
-                    (cb1) => { 
-                        count++;
-                        if (count > 1) {
-                            console.log(`Attempt #${count}`);
-                        }
-                        exec(step.code, { timeout: 600000, encoding: 'utf8' }, (err, stdout, stderr) => {
-                            this.stdout += stdout;
-                            this.stderr += stderr;
-                            if (err) {
-                                console.log('ERROR: ', err);
-                                cb1(err);
-                            }  else {
-                                if (step.regex && step.regex.test(stdout.trim())) {
-                                    this[step.field] = stdout.trim();
-                                }
-                                cb1();
+            if (!step.skip) {
+                setTimeout(()=> {
+                    let count = 0, count_num = (step.wait_for_response) ? 400 : 1;
+                    async.whilst(
+                        () => { return !((step.field && this[step.field] !== null) || count >= count_num); },
+                        (cb1) => { 
+                            count++;
+                            if (count > 1) {
+                                console.log(`Attempt #${count}`);
                             }
-                        });
-                    },
-                    (err) => {
-                        if (step.field && this[step.field] === null) {
-                            cb( { message: 'Unable to get results' } );
-                        } else {
-                            cb(err);
+                            exec(step.code, { timeout: 600000, encoding: 'utf8' }, (err, stdout, stderr) => {
+                                this.stdout += stdout;
+                                this.stderr += stderr;
+                                if (err) {
+                                    console.log('ERROR: ', err);
+                                    cb1(err);
+                                }  else {
+                                    if (step.regex && step.regex.test(stdout.trim())) {
+                                        this[step.field] = stdout.trim();
+                                    }
+                                    cb1();
+                                }
+                            });
+                        },
+                        (err) => {
+                            if (step.field && this[step.field] === null) {
+                                cb( { message: 'Unable to get results' } );
+                            } else {
+                                cb(err);
+                            }
                         }
-                    }
-                );
-            }, timeOut);
+                    );
+                }, timeOut);
+            } else {
+                cb();
+            }
         }, (err, result) => {
             if (!err) {
                 console.log('Done');
